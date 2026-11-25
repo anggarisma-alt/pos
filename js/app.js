@@ -2,7 +2,7 @@
 /* ===== Konstanta & State (sesi hanya di memori, bukan di URL — aman untuk iframe) ===== */
 const SA='Super Admin',AD='Admin',KS='Kasir',MG='Management';
 const ALLP=[100,200,500,1000,2000,5000,10000,20000,50000,100000];
-const MENU=[['dashboard','Dashboard','home',[SA,AD,KS,MG]],['kasir','Kasir','cart',[SA,KS]],['shift','Shift & Kas','clock',[SA,KS]],['riwayat','Riwayat','receipt',[SA,AD,KS]],['stok','Produk & Stok','box',[SA,AD]],['master','Master Data','list',[SA,AD]],['laporan','Laporan','chart',[SA,AD,KS,MG]],['pengaturan','Pengaturan','sliders',[SA,AD,KS,MG]]];
+const MENU=[['dashboard','Dashboard','home',[SA,AD,KS,MG]],['kasir','Kasir','cart',[SA,KS]],['shift','Shift & Kas','clock',[SA,KS]],['riwayat','Riwayat','receipt',[SA,AD,KS]],['stok','Produk & Stok','box',[SA,AD]],['master','Master Data','list',[SA,AD]],['barcode','Cetak Barcode','barcode',[SA,AD]],['laporan','Laporan','chart',[SA,AD,KS,MG]],['pengaturan','Pengaturan','sliders',[SA,AD,KS,MG]]];
 const S={token:null,user:null,cfg:null,skema:{},pecahan:[],page:null,vis:[],pos:null,cart:{},member:null,reward:null,holds:[],paid:{},pay:false,open:false,cache:{}};
 
 /* ===== Helper umum ===== */
@@ -509,6 +509,117 @@ SET.users=el=>crudView('Users',el);
 SET.log=async el=>{const L=await api('log.list');if(!L)return;el.innerHTML=`<div class="card"><div class="tw"><table><thead><tr><th>Waktu</th><th>User</th><th>Aksi</th><th>Detail</th></tr></thead><tbody>${L.map(l=>`<tr><td>${esc(l.waktu)}</td><td>${esc(l.user)}</td><td><span class="badge ${/DITOLAK|GAGAL/.test(l.aksi)?'er':''}">${esc(l.aksi)}</span></td><td>${esc(l.detail)}</td></tr>`).join('')}</tbody></table></div></div>`};
 SET.akun=el=>{el.innerHTML=`<div class="card"><h3>${esc(S.user.nama)}</h3><p class="mu">${esc(S.user.username)} · ${esc(S.user.peran)}</p><div class="fgrid">${tx('ak_lama','Password lama','','password')}${tx('ak_baru','Password baru (min. 6)','','password')}</div><button class="btn" data-a="gantiSandi">Ganti password</button></div><div class="card"><h3>Kecepatan koneksi</h3>${Perf.html()}</div>`};
 AKSI.gantiSandi=async()=>{const r=await api('akun.sandi',{lama:$('#ak_lama').value,baru:$('#ak_baru').value});if(r){toast('Password diganti','ok');$('#ak_lama').value='';$('#ak_baru').value=''}};
+
+
+/* ===================== CETAK BARCODE (Code 128) ===================== */
+const C128='212222 222122 222221 121223 121322 131222 122213 122312 132212 221213 221312 231212 112232 122132 122231 113222 123122 123221 223211 221132 221231 213212 223112 312131 311222 321122 321221 312212 322112 322211 212123 212321 232121 111323 131123 131321 112313 132113 132311 211313 231113 231311 112133 112331 132131 113123 113321 133121 313121 211331 231131 213113 213311 213131 311123 311321 331121 312113 312311 332111 314111 221411 431111 111224 111422 121124 121421 141122 141221 112214 112412 122114 122411 142112 142211 241211 221114 413111 241112 134111 111242 121142 121241 114212 124112 124211 411212 421112 421211 212141 214121 412121 111143 111341 131141 114113 114311 411113 411311 113141 114131 311141 411131 211412 211214 211232 2331112'.split(' ');
+/** Teks -> lebar elemen bar/spasi berselang-seling (mulai dari bar). null bila ada karakter yang tak didukung. */
+function code128(t){
+  t=String(t==null?'':t);if(!t||/[^\x20-\x7e]/.test(t))return null;
+  const v=[];
+  if(/^\d{4,}$/.test(t)){                       // angka: subset C (2 digit per simbol) = lebih ringkas
+    if(t.length%2===0){v.push(105);for(let i=0;i<t.length;i+=2)v.push(+t.substr(i,2))}
+    else{v.push(104,t.charCodeAt(0)-32,99);for(let i=1;i<t.length;i+=2)v.push(+t.substr(i,2))}
+  }else{v.push(104);for(const ch of t)v.push(ch.charCodeAt(0)-32)}   // subset B
+  let sum=v[0];for(let i=1;i<v.length;i++)sum+=v[i]*i;
+  v.push(sum%103,106);
+  const w=[];v.forEach(x=>{C128[x].split('').forEach(d=>w.push(+d))});return w;
+}
+/** Gambar barcode sebagai SVG vektor (tajam di printer apa pun). */
+function barSvg(t){
+  const w=code128(t);if(!w)return null;let x=10,d='';
+  w.forEach((n,i)=>{if(i%2===0)d+=`M${x} 0h${n}v1h-${n}z`;x+=n});
+  return `<svg class="bcs" viewBox="0 0 ${x+10} 1" preserveAspectRatio="none" shape-rendering="crispEdges" role="img" aria-label="Barcode ${esc(t)}"><path d="${d}" fill="#000"/></svg>`;
+}
+const LB_CSS=`.lb{box-sizing:border-box;width:var(--w);height:var(--h);padding:calc(var(--h)*.05) calc(var(--h)*.07);display:flex;flex-direction:column;justify-content:center;align-items:center;gap:calc(var(--h)*.02);overflow:hidden;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;text-align:center;break-inside:avoid}
+.lb .tk{font-size:calc(var(--h)*.075);font-weight:700;line-height:1.1;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lb .nm{font-size:calc(var(--h)*.095);font-weight:700;line-height:1.1;max-width:100%;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.lb .bcs{display:block;width:100%;height:calc(var(--h)*.3);flex:none}
+.lb .kd{font:calc(var(--h)*.08) "Courier New",monospace;letter-spacing:.06em;line-height:1}
+.lb .hg{font-size:calc(var(--h)*.12);font-weight:800;line-height:1}`;
+document.head.insertAdjacentHTML('beforeend','<style>'+LB_CSS+'</style>');
+const BC_PRESET={
+  t58:{n:'Thermal 58 mm · label 50×30 mm',w:50,h:30,mode:'roll'},
+  t40:{n:'Thermal · label 40×30 mm',w:40,h:30,mode:'roll'},
+  t80:{n:'Thermal 80 mm · label 70×40 mm',w:70,h:40,mode:'roll'},
+  a4_3x8:{n:'Kertas A4 · 3 kolom × 8 baris',cols:3,rows:8,mode:'sheet'},
+  a4_4x10:{n:'Kertas A4 · 4 kolom × 10 baris',cols:4,rows:10,mode:'sheet'},
+  a4_2x7:{n:'Kertas A4 · 2 kolom × 7 baris',cols:2,rows:7,mode:'sheet'},
+  custom:{n:'Ukuran kustom (rol, mm)',mode:'roll'}
+};
+const BC_DEF={preset:'t58',cw:50,ch:30,skip:0,tk:false,nm:true,kd:true,hg:true};
+function bcOpt(){let o=Object.assign({},BC_DEF);try{const l=JSON.parse(lsGet('pos_bc')||'null');if(l)o=Object.assign(o,l)}catch(e){}return o}
+function bcDims(o){
+  const P=BC_PRESET[o.preset]||BC_PRESET.t58;
+  if(P.mode==='sheet'){const m=6;return Object.assign({m:m},P,{w:+((210-2*m)/P.cols).toFixed(2),h:+((297-2*m)/P.rows).toFixed(2)})}
+  if(o.preset==='custom')return Object.assign({},P,{w:Math.min(120,Math.max(20,+o.cw||50)),h:Math.min(100,Math.max(15,+o.ch||30))});
+  return P;
+}
+function labelHtml(p,o){
+  const b=barSvg(p.kode);
+  return `<div class="lb">${o.tk?`<div class="tk">${esc(S.cfg.toko.nama)}</div>`:''}${o.nm?`<div class="nm">${esc(p.nama)}</div>`:''}${b}${o.kd?`<div class="kd">${esc(p.kode)}</div>`:''}${o.hg?`<div class="hg">${rp(p.h_eceran_umum)}</div>`:''}</div>`;
+}
+/** Daftar label (produk diulang sesuai jumlah). Produk dengan kode tak didukung dilewati. */
+function bcLabels(){
+  const L=[],skip=[];
+  (S.bcP||[]).forEach(p=>{const n=Math.min(500,Math.max(0,Math.floor(num(S.bc.sel[p.id]))));if(!n)return;if(!code128(p.kode)){skip.push(p.nama);return}for(let i=0;i<n;i++)L.push(p)});
+  return {L:L,skip:skip};
+}
+function bcDoc(o,L){
+  const D=bcDims(o),items=L.map(p=>labelHtml(p,o)).join('');
+  let css=`:root{--w:${D.w}mm;--h:${D.h}mm}body{margin:0;background:#fff}.lb{outline:1px dashed #b8c2d3}@media print{.lb{outline:none}}`,body;
+  if(D.mode==='sheet'){
+    css+=`@page{size:A4;margin:${D.m}mm}.sh{display:grid;grid-template-columns:repeat(${D.cols},${D.w}mm);grid-auto-rows:${D.h}mm}`;
+    body=`<div class="sh">${'<div class="lb" style="visibility:hidden;outline:none"></div>'.repeat(Math.max(0,Math.floor(+o.skip||0)))}${items}</div>`;
+  }else{
+    css+=`@page{size:${D.w}mm ${D.h}mm;margin:0}.lb{page-break-after:always}.lb:last-child{page-break-after:auto}`;body=items;
+  }
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Barcode</title><style>${LB_CSS}${css}</style></head><body>${body}</body></html>`;
+}
+PAGES.barcode=()=>{
+  S.bc=S.bc||{sel:{},q:''};const o=bcOpt();
+  view(`<div class="bcpage"><div class="card"><h3>1. Pilih produk</h3><p class="mu" style="margin:4px 0 12px">Centang produk yang barcodenya ingin dicetak, lalu isi jumlah label per produk.</p>
+  <div class="row gap wrap"><input class="inp" id="bcq" type="search" placeholder="Cari nama atau kode…" style="flex:1;min-width:180px" value="${esc(S.bc.q)}"><button class="btn soft sm" data-a="bcSemua">Pilih hasil</button><button class="btn ghost sm" data-a="bcStok">Jumlah = stok</button><button class="btn ghost sm" data-a="bcKosong">Kosongkan</button></div><div id="bcList"><div class="skel"></div></div></div>
+  <div class="card" id="bcSet"><h3>2. Pengaturan label</h3><div class="fgrid" style="margin-top:12px">${sel('bc_preset','Ukuran / kertas',o.preset,Object.keys(BC_PRESET).map(k=>[k,BC_PRESET[k].n]))}<div class="fg" id="bcCustom"><label class="lbl">Ukuran kustom (mm)</label><div class="row gap"><input class="inp" id="bc_cw" type="number" min="20" max="120" value="${o.cw}" aria-label="Lebar mm"><span>×</span><input class="inp" id="bc_ch" type="number" min="15" max="100" value="${o.ch}" aria-label="Tinggi mm"></div></div><div class="fg" id="bcSkip"><label class="lbl" for="bc_skip">Lewati label pertama (kertas A4 yang sudah terpakai)</label><input class="inp" id="bc_skip" type="number" min="0" max="200" value="${o.skip}"></div></div>
+  <div class="fgrid">${ck('bc_nm','Nama produk',o.nm)}${ck('bc_hg','Harga (eceran umum)',o.hg)}${ck('bc_kd','Angka kode di bawah barcode',o.kd)}${ck('bc_tk','Nama toko',o.tk)}</div></div>
+  <div class="card"><div class="row wrap gap"><div><h3>3. Pratinjau</h3><div class="mu" id="bcInfo"></div></div><button class="btn" data-a="bcCetak" id="bcBtn">${ic('printer')} Cetak barcode</button></div><div class="bcprev" id="bcPrev"></div></div></div><button class="btn cbar" id="bcb" data-a="bcCetak" hidden></button>`);
+  S.bcP=null;swr('crud.list',{sheet:'Produk'},rows=>{S.bcP=rows.filter(r=>r.status==='Aktif');bcList();bcPrev()});
+  $('#bcq').addEventListener('input',e=>{S.bc.q=e.target.value;bcList()});
+  const L=$('#bcList');
+  L.addEventListener('change',e=>{const id=e.target.dataset.id;if(!id)return;const q=L.querySelector('[data-q="'+id+'"]');if(e.target.checked){S.bc.sel[id]=Math.max(1,Math.floor(num(q.value))||1);q.disabled=false}else{delete S.bc.sel[id];q.disabled=true}bcPrev()});
+  L.addEventListener('input',e=>{const id=e.target.dataset.q;if(!id)return;const n=Math.max(1,Math.min(500,Math.floor(num(e.target.value))||1));if(id in S.bc.sel){S.bc.sel[id]=n;bcPrev()}});
+  $('#bcSet').addEventListener('input',()=>{const n=bcOpt(),g=id=>$('#'+id);const o2={preset:g('bc_preset').value,cw:g('bc_cw').value,ch:g('bc_ch').value,skip:g('bc_skip').value,nm:g('bc_nm').checked,hg:g('bc_hg').checked,kd:g('bc_kd').checked,tk:g('bc_tk').checked};lsSet('pos_bc',JSON.stringify(Object.assign(n,o2)));bcPrev()});
+};
+function bcList(){
+  const el=$('#bcList');if(!el)return;if(!S.bcP){el.innerHTML='<div class="skel"></div>';return}
+  const q=S.bc.q.trim().toLowerCase(),all=S.bcP.filter(p=>!q||(p.nama+' '+p.kode).toLowerCase().indexOf(q)>-1),L=all.slice(0,80);S.bcShown=L;
+  el.innerHTML=L.length?`<div class="mu" style="margin:10px 4px 2px">${all.length} produk${all.length>80?' (80 teratas, persempit dengan pencarian)':''}</div>`+L.map(p=>{const n=S.bc.sel[p.id];return `<label class="bcrow"><input type="checkbox" data-id="${p.id}" ${n?'checked':''} aria-label="Pilih ${esc(p.nama)}"><span class="av" style="--h:${hue(p.nama)}">${esc(p.nama.trim().charAt(0).toUpperCase())}</span><span class="bcm"><b>${esc(p.nama)}</b><span class="mu">${esc(p.kode)} · ${rp(p.h_eceran_umum)}</span></span><input class="inp bcq" type="number" min="1" max="500" inputmode="numeric" data-q="${p.id}" value="${n||1}" ${n?'':'disabled'} aria-label="Jumlah label"></label>`}).join(''):'<p class="mu ct" style="padding:24px 0">Produk tidak ditemukan.</p>';
+}
+function bcPrev(){
+  const el=$('#bcPrev');if(!el||!S.bcP)return;const o=bcOpt(),D=bcDims(o),{L,skip}=bcLabels();
+  $('#bcCustom').hidden=o.preset!=='custom';$('#bcSkip').hidden=D.mode!=='sheet';
+  const uniq=[];L.forEach(p=>{if(uniq.indexOf(p)<0&&uniq.length<4)uniq.push(p)});
+  const hal=D.mode==='sheet'?Math.ceil((L.length+Math.max(0,Math.floor(+o.skip||0)))/(D.cols*D.rows)):L.length;
+  $('#bcInfo').textContent=L.length?`${Object.keys(S.bc.sel).length} produk · ${L.length} label · ${D.mode==='sheet'?hal+' lembar A4':'label '+D.w+'×'+D.h+' mm'}`:'Belum ada produk dipilih.';
+  el.style.cssText=`--w:${D.w}mm;--h:${D.h}mm`;
+  el.innerHTML=uniq.length?uniq.map(p=>labelHtml(p,o)).join('')+(skip.length?`<div class="err" style="flex-basis:100%">Dilewati (kode berisi karakter tak didukung): ${esc(skip.join(', '))}</div>`:''):'<p class="mu" style="margin:0">Pilih produk untuk melihat contoh label.</p>';
+  const b=$('#bcb');if(b){b.hidden=!L.length;b.innerHTML=`<span class="cbl"><span class="cbi">${ic('printer')}</span><span><b>Cetak barcode</b><small>${L.length} label</small></span></span>`}
+  $('#bcBtn').disabled=!L.length;
+}
+AKSI.bcSemua=()=>{(S.bcShown||[]).forEach(p=>{if(!(p.id in S.bc.sel))S.bc.sel[p.id]=1});bcList();bcPrev()};
+AKSI.bcKosong=()=>{S.bc.sel={};bcList();bcPrev()};
+AKSI.bcStok=async()=>{
+  const ids=Object.keys(S.bc.sel);if(!ids.length)return toast('Pilih produk terlebih dahulu','er');
+  const r=await api('stok.ringkas',{});if(!r)return;let n=0;r.forEach(x=>{if(x.id in S.bc.sel&&x.stok>0){S.bc.sel[x.id]=Math.min(500,x.stok);n++}});
+  bcList();bcPrev();toast(n+' produk diisi sesuai stok','ok');
+};
+AKSI.bcCetak=()=>{
+  const o=bcOpt(),{L,skip}=bcLabels();if(!L.length)return toast('Pilih produk terlebih dahulu','er');
+  if(L.length>2000)return toast('Maksimal 2000 label per cetak','er');
+  modal('Pratinjau cetak barcode',`<iframe id="bcF" title="Pratinjau barcode" style="width:100%;height:58vh;border:1px solid var(--bd);border-radius:12px;background:#fff"></iframe><p class="mu">${L.length} label${skip.length?' · dilewati: '+esc(skip.join(', ')):''}. Pada dialog cetak, pilih ukuran kertas yang sama dan atur skala 100% (tanpa “fit to page”).</p>`,{wide:true,foot:`<button class="btn ghost" data-a="mtutup">Tutup</button><button class="btn" data-a="bcPrint">${ic('printer')} Cetak</button>`});
+  $('#bcF').srcdoc=bcDoc(o,L);
+};
+AKSI.bcPrint=()=>{const w=$('#bcF').contentWindow;w.focus();w.print()};
 
 /* ===== Mulai ===== */
 document.body.insertAdjacentHTML('afterbegin',rupiahSprite());

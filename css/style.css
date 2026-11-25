@@ -173,6 +173,17 @@ tbody tr:last-child td{border-bottom:0}
 @media (min-width:640px){.kasgrid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (min-width:900px){.kasgrid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 
+/* ===== Cetak barcode ===== */
+.bcpage{max-width:900px;margin:0 auto}
+#bcList{max-height:min(52vh,440px);overflow:auto;margin-top:6px;-webkit-overflow-scrolling:touch}
+.bcrow{display:grid;grid-template-columns:auto 44px minmax(0,1fr) 84px;gap:12px;align-items:center;padding:10px 4px;border-bottom:1px solid var(--bd);cursor:pointer}
+.bcrow:last-child{border-bottom:0}.bcrow>input[type=checkbox]{width:22px;height:22px;accent-color:var(--pri)}
+.bcrow .av{width:42px;height:42px;border-radius:13px;font-size:16px}
+.bcm{display:flex;flex-direction:column;min-width:0}.bcm b{overflow-wrap:anywhere;font-size:15px;line-height:1.3}
+.bcq{min-height:42px;text-align:center;padding:4px 6px}
+.bcprev{display:flex;flex-wrap:wrap;gap:12px;margin-top:14px;padding:14px;background:var(--sf2);border-radius:16px;border:1px dashed var(--bd);overflow:auto}
+.bcprev .lb{outline:1px dashed #b8c2d3;box-shadow:var(--sh1);flex:none;max-width:100%}
+
 /* ===== Modal, toast, indikator ===== */
 #mroot{position:fixed;inset:0;z-index:60;display:none;align-items:flex-end;justify-content:center;background:rgba(8,16,36,.5);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
 #mroot.on{display:flex}
