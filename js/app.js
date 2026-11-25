@@ -124,12 +124,12 @@ function navHtml(){
 function halamanHash(){const h=(location.hash||'').replace(/^#\/?/,'');return PAGES[h]?h:''}
 function render(p){document.body.style.overflow='';
   if(p!=='lainnya'&&!S.vis.some(m=>m[0]===p))p='dashboard';
-  S.page=p;S.open=false;S.pay=false;navHtml();
+  S.page=p;S.sp=false;S.pay=false;navHtml();
   const m=MENU.find(x=>x[0]===p);$('#ttl').textContent=p==='lainnya'?'Lainnya':m?m[1]:'';
   window.scrollTo(0,0);PAGES[p]();
 }
 function navigateTo(p){if(location.hash==='#/'+p)render(p);else location.hash='#/'+p}
-document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;if($('#mroot').classList.contains('on'))mtutup();else if(S.open){S.open=false;S.pay=false;renderPos()}});
+document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;if($('#mroot').classList.contains('on'))mtutup();else if(S.sp){S.sp=false;listPos()}});
 window.addEventListener('hashchange',()=>{if(S.user)render(halamanHash()||'dashboard')});
 PAGES.lainnya=()=>view('<div class="card">'+S.vis.slice(4).map(m=>`<button class="li" data-a="nav" data-p="${m[0]}"><span class="row gap">${ic(m[2])}<b>${m[1]}</b></span></button>`).join('')+'</div>');
 
@@ -306,13 +306,12 @@ PAGES.kasir=async()=>{
   if(!S.pos){view(skel());const d=await api('pos.data');if(!d)return;S.pos=d}
   if(!S.pos.shift)return bukaShiftView();
   rebuildPM();
-  view(`<div class="kasir"><div class="sbox"><span class="sic">${ic('search')}</span><label class="lbl" for="q" style="position:absolute;left:-9999px">Cari produk</label><input class="inp" id="q" type="search" enterkeyhint="search" placeholder="Cari produk atau kode…" autocomplete="off"><button class="sx" id="qx" data-a="qClear" aria-label="Hapus pencarian" hidden>${ic('x')}</button><button class="scanb" data-a="scan" aria-label="Scan barcode">${ic('scan')}</button></div>
-  <div class="chiprow"><button class="chipb" data-a="pilihMember" id="bMem"></button><span id="holdBar"></span></div><div id="res"></div>
-  <div class="cart" id="cart" role="dialog" aria-modal="true" aria-label="Keranjang"></div></div><button class="btn cbar" id="cb" data-a="cartBuka"></button>`);
-  const q=$('#q');q.addEventListener('input',()=>{$('#qx').hidden=!q.value;listPos()});q.addEventListener('keydown',e=>{if(e.key==='Enter')qEnter()});
+  view(`<div class="kasir"><div class="sbar"><div class="sbox"><span class="sic">${ic('search')}</span><label class="lbl" for="q" style="position:absolute;left:-9999px">Cari produk</label><input class="inp" id="q" type="search" enterkeyhint="search" placeholder="Cari produk atau kode…" autocomplete="off"><button class="sx" id="qx" data-a="qClear" aria-label="Hapus pencarian" hidden>${ic('x')}</button><button class="scanb" data-a="scan" aria-label="Scan barcode">${ic('scan')}</button></div><div class="spop" id="spop" hidden></div></div>
+  <div class="chiprow"><button class="chipb" data-a="pilihMember" id="bMem"></button><span id="holdBar"></span></div>
+  <div class="kgrid"><div class="card kitems" id="kitems"></div><div class="card ksum" id="ksum"></div></div></div><button class="btn cbar" id="cb" data-a="bayarCepat" hidden></button>`);
+  const q=$('#q');q.addEventListener('input',()=>{S.sp=!!q.value.trim();$('#qx').hidden=!q.value;listPos()});q.addEventListener('focus',()=>{if(q.value.trim()){S.sp=true;listPos()}});q.addEventListener('keydown',e=>{if(e.key==='Enter')qEnter()});
   renderPos();
 };
-const emptyPos=()=>`<div class="empty"><div class="eic">${ic('search')}</div><h3>Siap melayani pelanggan</h3><p class="mu">Ketik nama atau kode produk untuk mencari, atau scan barcode.</p><div class="tips"><span>${ic('search')} Ketik nama / kode</span><span>${ic('scan')} Scan barcode</span><span>${ic('check')} Enter = tambah cepat</span></div></div>`;
 function resRow(p){
   const n=S.cart[p.id]||0,qq=Math.max(n,1),g=p.min>0&&qq>=p.min,h=g?(S.member?p.gm:p.gu):(S.member?p.em:p.eu),habis=p.stok<=0;
   const ctl=n?`<div class="qty"><button data-a="qty" data-id="${p.id}" data-d="-1" aria-label="Kurangi">${ic('minus')}</button><span>${n}</span><button data-a="qty" data-id="${p.id}" data-d="1" aria-label="Tambah" ${n>=p.stok?'disabled':''}>${ic('plus')}</button></div>`:`<button class="btn sm addb" data-a="add" data-id="${p.id}" ${habis?'disabled':''} aria-label="Tambah ${esc(p.nama)}">${ic('plus')} Tambah</button>`;
@@ -320,36 +319,48 @@ function resRow(p){
 }
 function cariProduk(q){q=q.trim().toLowerCase();return q?S.pos.produk.filter(p=>(p.nama+' '+p.kode).toLowerCase().indexOf(q)>-1):[]}
 function listPos(){
-  const el=$('#res'),qi=$('#q');if(!el||!qi)return;const raw=qi.value.trim();
-  if(!raw){el.innerHTML=emptyPos();return}
-  const L=cariProduk(raw);
-  el.innerHTML=L.length?`<div class="mu" style="margin:10px 4px">${L.length} produk ditemukan${L.length>30?' (30 teratas)':''}</div>${L.slice(0,30).map(resRow).join('')}`:`<div class="empty"><div class="eic">${ic('search')}</div><h3>Tidak ditemukan</h3><p class="mu">Tidak ada produk untuk “${esc(raw)}”. Coba kata kunci atau kode lain.</p></div>`;
+  const el=$('#spop'),qi=$('#q');if(!el||!qi)return;const raw=qi.value.trim();
+  if(!raw||!S.sp){el.hidden=true;$('#dim').className='dim';return}
+  const L=cariProduk(raw),old=el.querySelector('.spbody'),st=old?old.scrollTop:0;
+  el.hidden=false;$('#dim').className='dim on';
+  el.innerHTML=`<div class="spbody">${L.length?`<div class="mu sph">${L.length} produk ditemukan${L.length>30?' (30 teratas)':''}</div>${L.slice(0,30).map(resRow).join('')}`:`<div class="empty small"><div class="eic">${ic('search')}</div><h3>Tidak ditemukan</h3><p class="mu">Tidak ada produk untuk “${esc(raw)}”. Coba kata kunci atau kode lain.</p></div>`}</div><div class="spft"><button class="btn blk" data-a="spTutup">${ic('check')} Selesai${jml()?' · '+jml()+' item di keranjang':''}</button></div>`;
+  const nb=el.querySelector('.spbody');if(nb)nb.scrollTop=st;
 }
 function qEnter(){
   const qi=$('#q'),raw=qi.value.trim();if(!raw)return;
   let one=S.pos.produk.filter(p=>p.kode.toLowerCase()===raw.toLowerCase());if(one.length!==1)one=cariProduk(raw);
-  if(one.length===1){AKSI.add({id:one[0].id});qi.value='';$('#qx').hidden=true;listPos()}else toast(one.length?'Pilih produk dari daftar':'Produk tidak ditemukan','er');
+  if(one.length===1){AKSI.add({id:one[0].id});qi.value='';S.sp=false;$('#qx').hidden=true;listPos()}else toast(one.length?'Pilih produk dari daftar':'Produk tidak ditemukan','er');
 }
-AKSI.qClear=()=>{const q=$('#q');q.value='';$('#qx').hidden=true;listPos();q.focus()};
+AKSI.qClear=()=>{const q=$('#q');q.value='';S.sp=false;$('#qx').hidden=true;listPos();q.focus()};
+AKSI.spTutup=()=>{S.sp=false;listPos()};
+AKSI.kosong=()=>{if(!jml()||!confirm('Kosongkan keranjang?'))return;S.cart={};S.paid={};S.reward=null;S.pay=false;renderPos()};
+AKSI.bayarCepat=()=>{S.pay=true;S.paid={};renderPos();const e=$('#ksum');if(e)e.scrollIntoView({behavior:'smooth',block:'start'})};
 function bump(){const b=$('#cb');if(b){b.classList.remove('bump');void b.offsetWidth;b.classList.add('bump')}}
 function renderPos(){
   if(S.page!=='kasir')return;
-  listPos();const h=hitung();
+  const h=hitung();
   $('#bMem').innerHTML=`${ic('user')}<span>${S.member?esc(S.member.nama)+' · '+S.member.poin+' poin':'Pelanggan umum'}</span>`;
   $('#holdBar').innerHTML=S.holds.length?`<button class="chipb" data-a="holdList">${ic('pause')}<span>Ditahan (${S.holds.length})</span></button>`:'';
-  const c=$('#cart');c.className='cart'+(S.open?' open':'');$('#dim').className='dim'+(S.open?' on':'');c.innerHTML=cartHtml(h);
-  document.body.style.overflow=S.open?'hidden':'';
-  const b=$('#cb'),n=jml();b.innerHTML=`<span class="cbl"><span class="cbi">${ic('cart')}${n?`<i>${n}</i>`:''}</span><span><b>${n?'Lihat keranjang':'Keranjang kosong'}</b><small>${n} item</small></span></span><b class="cbt">${rp(h.r.bayar)}</b>`;b.disabled=!n;
+  $('#kitems').innerHTML=itemsHtml(h);$('#ksum').innerHTML=sumHtml(h);listPos();
+  const b=$('#cb'),n=jml();b.hidden=!n||S.pay;b.innerHTML=`<span class="cbl"><span class="cbi">${ic('cart')}<i>${n}</i></span><span><b>Bayar</b><small>${n} item</small></span></span><b class="cbt">${rp(h.r.bayar)}</b>`;
 }
-function cartHtml(h){
-  let o=`<div class="grab"></div><div class="row"><h3>${S.pay?'Pembayaran':'Keranjang'}</h3><button class="ib" data-a="cartTutup" aria-label="Tutup">${ic('x')}</button></div><button class="mchip" data-a="pilihMember">${ic('user')}<span>${S.member?esc(S.member.nama)+' · '+S.member.poin+' poin':'Pelanggan umum'}</span><em>Ubah</em></button>`;
-  if(!h.L.length)return o+'<p class="mu ct" style="padding:24px 0">Keranjang kosong. Ketuk produk untuk menambah.</p>';
+function itemsHtml(h){
+  if(!h.L.length)return `<div class="empty small"><div class="eic">${ic('cart')}</div><h3>Keranjang masih kosong</h3><p class="mu">Cari produk di kolom atas. Hasilnya muncul sebagai pop-up.</p></div>`;
+  let o=`<div class="row" style="margin-bottom:4px"><h3>Keranjang <span class="badge">${jml()} item</span></h3><button class="btn dng sm" data-a="kosong">Kosongkan</button></div>`;
+  o+=h.L.map(l=>`<div class="ci"><div><b style="font-size:14px">${esc(l.p.nama)}</b><div class="mu">${rp(l.h)}${l.g?' · grosir':''}${l.d?' · diskon '+rp(l.d):''}</div></div><div class="qty"><button data-a="qty" data-id="${l.p.id}" data-d="-1" aria-label="Kurangi">${ic('minus')}</button><span>${l.q}</span><button data-a="qty" data-id="${l.p.id}" data-d="1" aria-label="Tambah">${ic('plus')}</button></div></div>`).join('');
+  if(h.gratis)o+=`<div class="ci"><div><b style="font-size:14px">${esc(h.gratis.nama)}</b><div class="mu">Reward · gratis</div></div><span class="badge ok">×1</span></div>`;
+  return o;
+}
+function sumHtml(h){
+  let o='';
+  if(!h.L.length)return `<h3>Ringkasan</h3><div class="row" style="margin-top:10px"><span class="mu">Total</span><span class="tot">Rp0</span></div><p class="mu">Belum ada item untuk dibayar.</p>`;
   if(!S.pay){
-    o+=h.L.map(l=>`<div class="ci"><div><b style="font-size:14px">${esc(l.p.nama)}</b><div class="mu">${rp(l.h)}${l.g?' · grosir':''}${l.d?' · diskon '+rp(l.d):''}</div></div><div class="qty"><button data-a="qty" data-id="${l.p.id}" data-d="-1" aria-label="Kurangi">${ic('minus')}</button><span>${l.q}</span><button data-a="qty" data-id="${l.p.id}" data-d="1" aria-label="Tambah">${ic('plus')}</button></div></div>`).join('');
+    o+=`<h3>Ringkasan</h3>`;
     if(S.member){const rs=S.pos.reward.filter(r=>r.poin<=S.member.poin);if(rs.length)o+=`<div class="fg" style="margin-top:10px"><label class="lbl" for="rwSel">Tukar reward (saldo ${S.member.poin} poin)</label><select class="inp" id="rwSel" data-a-ch="reward"><option value="">— tidak —</option>${rs.map(r=>`<option value="${r.id}" ${S.reward&&S.reward.id===r.id?'selected':''}>${esc(r.nama)} (${r.poin} poin)</option>`).join('')}</select></div>`}
     o+=`<div class="row" style="margin-top:10px"><span class="mu">Subtotal</span><b>${rp(h.sub)}</b></div>${h.dI+h.dT?`<div class="row"><span class="mu">Diskon</span><b>-${rp(h.dI+h.dT)}</b></div>`:''}${h.rw?`<div class="row"><span class="mu">Reward</span><b>-${rp(h.rw)}</b></div>`:''}${h.gratis?`<div class="row"><span class="mu">Gratis</span><b>${esc(h.gratis.nama)}</b></div>`:''}
     <div class="row"><span class="mu">Total (dibulatkan)</span><span class="tot">${rp(h.r.bayar)}</span></div><div class="row gap" style="margin-top:10px"><button class="btn ghost" data-a="tahan">${ic('pause')} Tahan</button><button class="btn" style="flex:1;min-height:52px" data-a="bayarMulai">Bayar</button></div>`;return o;
   }
+  o+=`<h3>Pembayaran</h3>`;
   const pd=totalPecahan(S.paid),kb=pd-h.r.bayar,kas=S.pos.shift.kas,st={};ALLP.forEach(d=>{st[d]=(kas[d]||0)+(S.paid[d]||0)});const kp=kb>0?pecahKembali(kb,st):{};
   o+=`<div class="row" style="margin-top:6px"><span class="mu">Subtotal</span><span>${rp(h.sub)}</span></div>${h.dI+h.dT+h.rw?`<div class="row"><span class="mu">Diskon/reward</span><span>-${rp(h.dI+h.dT+h.rw)}</span></div>`:''}${h.r.diskon?`<div class="row"><span class="mu">Diskon pembulatan</span><span class="badge wr">-${rp(h.r.diskon)}</span></div>`:''}${h.r.infak?`<div class="row"><span class="mu">Infak</span><span class="badge ok">+${rp(h.r.infak)}</span></div>`:''}
   <div class="row"><span class="mu">Total bayar</span><span class="tot">${rp(h.r.bayar)}</span></div><div class="row" style="margin-top:10px"><span class="mu">Uang diterima</span><b style="font-size:20px">${rp(pd)}</b></div><div class="row gap" style="justify-content:flex-start;margin-top:8px"><button class="btn soft sm" data-a="uangPas">Uang pas</button><button class="btn ghost sm" data-a="payReset">Reset</button></div>
@@ -358,14 +369,13 @@ function cartHtml(h){
   o+=`<button class="btn blk" style="margin-top:12px" data-a="selesai" ${pd<h.r.bayar||!kp?'disabled':''}>Selesai & cetak struk</button><button class="btn ghost blk" style="margin-top:8px;min-height:44px" data-a="bayarKembali">Kembali ke keranjang</button>`;return o;
 }
 document.addEventListener('change',e=>{if(e.target.dataset&&e.target.dataset.aCh==='reward'){S.reward=S.pos.reward.find(r=>r.id===e.target.value)||null;renderPos()}});
-$('#dim').addEventListener('click',()=>{S.open=false;renderPos()});
+$('#dim').addEventListener('click',()=>{S.sp=false;listPos()});
 AKSI.add=d=>{const p=S.PM[d.id],q=(S.cart[d.id]||0)+1;if(q>p.stok)return toast('Stok '+p.nama+' hanya '+p.stok,'er');S.cart[d.id]=q;S.paid={};renderPos();bump()};
 AKSI.qty=d=>{const p=S.PM[d.id],q=(S.cart[d.id]||0)+Number(d.d);if(q>p.stok)return toast('Stok tidak cukup','er');if(q<=0)delete S.cart[d.id];else S.cart[d.id]=q;S.paid={};renderPos()};
-AKSI.cartBuka=()=>{S.open=true;renderPos()};AKSI.cartTutup=()=>{S.open=false;S.pay=false;renderPos()};
-AKSI.bayarMulai=()=>{S.pay=true;S.paid={};renderPos()};AKSI.bayarKembali=()=>{S.pay=false;renderPos()};
+AKSI.bayarMulai=()=>{S.pay=true;S.paid={};renderPos();const e=$('#ksum');if(e)e.scrollIntoView({behavior:'smooth',block:'start'})};AKSI.bayarKembali=()=>{S.pay=false;renderPos()};
 AKSI.pay=d=>{S.paid[d.d]=(S.paid[d.d]||0)+1;renderPos()};AKSI.payReset=()=>{S.paid={};renderPos()};
 AKSI.uangPas=()=>{let s=hitung().r.bayar;S.paid={};S.pecahan.slice().sort((a,b)=>b-a).forEach(d=>{const n=Math.floor(s/d);if(n){S.paid[d]=n;s-=n*d}});renderPos()};
-AKSI.tahan=()=>{if(!jml())return;S.holds.push({cart:S.cart,member:S.member,reward:S.reward,t:new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})});S.cart={};S.reward=null;S.open=false;toast('Transaksi ditahan');renderPos()};
+AKSI.tahan=()=>{if(!jml())return;S.holds.push({cart:S.cart,member:S.member,reward:S.reward,t:new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})});S.cart={};S.reward=null;S.sp=false;toast('Transaksi ditahan');renderPos()};
 AKSI.holdList=()=>modal('Transaksi ditahan',S.holds.map((h,i)=>`<div class="li"><span>${h.t} · ${Object.keys(h.cart).length} produk${h.member?' · '+esc(h.member.nama):''}</span><span class="row gap"><button class="btn soft sm" data-a="holdPulih" data-i="${i}">Lanjutkan</button><button class="btn dng sm" data-a="holdHapus" data-i="${i}" aria-label="Hapus">${ic('trash')}</button></span></div>`).join('')||'<p class="mu">Tidak ada.</p>');
 AKSI.holdPulih=d=>{if(jml())return toast('Selesaikan atau tahan keranjang saat ini dulu','er');const h=S.holds.splice(Number(d.i),1)[0];S.cart=h.cart;S.member=h.member;S.reward=h.reward;mtutup();renderPos()};
 AKSI.holdHapus=d=>{S.holds.splice(Number(d.i),1);mtutup();renderPos()};
@@ -382,7 +392,7 @@ AKSI.selesai=async(d,b)=>{
   if(!r){b.disabled=false;return}
   S.pos.shift.kas=r.kas;h.L.forEach(l=>{l.p.stok-=l.q});if(h.gratis)h.gratis.stok-=1;
   if(S.member){S.member.poin=r.struk.poin_saldo}
-  S.cart={};S.paid={};S.reward=null;S.pay=false;S.open=false;renderPos();tampilStruk(r.struk,true);
+  S.cart={};S.paid={};S.reward=null;S.pay=false;S.sp=false;renderPos();tampilStruk(r.struk,true);
 };
 AKSI.scan=async()=>{
   if(!('BarcodeDetector' in window))return toast('Scan kamera belum didukung browser ini. Ketik kode di kolom cari.','er');
